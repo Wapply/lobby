@@ -35,6 +35,9 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # runtime state
 data
+apps/*/.tmp
+apps/*/.uploads
+apps/*/.out
 
 # Tauri / Rust
 src-tauri/target

@@ -1,17 +1,35 @@
 import { spawn, type Subprocess } from "bun";
+import { mkdirSync, existsSync } from "node:fs";
+import { join } from "node:path";
 
 const YT_DLP = `C:\\Portables\\open-video-downloader\\yt-dlp.exe`;
+const TEMP_DIR = join(import.meta.dir, ".tmp");
 
 // Track active downloads for cancellation
 const activeDownloads = new Map<string, Subprocess>();
-let downloadIdCounter = 0;
 
 export interface DownloadRequest {
   url: string;
-  formatId?: string;       // from yt-dlp -F (e.g. "140" for m4a)
-  outputDir: string;
-  audioBitrate?: string;   // e.g. "128K", "320K"
+  formatId?: string;
+  audioBitrate?: string;
   embedThumbnail?: boolean;
+}
+
+export interface DownloadState {
+  id: string;
+  pct: number;
+  line: string;
+  done: boolean;
+  error?: string;
+  filename?: string;
+}
+
+function ensureTemp() {
+  if (!existsSync(TEMP_DIR)) mkdirSync(TEMP_DIR, { recursive: true });
+}
+
+export function tempFilePath(name: string): string {
+  return join(TEMP_DIR, name);
 }
 
 export function cancelDownload(id: string): boolean {
@@ -33,7 +51,7 @@ export function cancelAllDownloads() {
 
 export async function listFormats(url: string): Promise<{ ok: boolean; formats?: any[]; error?: string }> {
   try {
-    const proc = spawn([YT_DLP, "--no-playlist", "-J", "-F", url], { stdout: "pipe", stderr: "pipe" });
+    const proc = spawn([YT_DLP, "--no-playlist", "-J", url], { stdout: "pipe", stderr: "pipe" });
     const out = await new Response(proc.stdout).text();
     await proc.exited;
     const data = JSON.parse(out);
@@ -55,28 +73,32 @@ export async function listFormats(url: string): Promise<{ ok: boolean; formats?:
 }
 
 export async function startDownload(
+  id: string,
   req: DownloadRequest,
   onProgress: (pct: number, line: string) => void,
-): Promise<{ id: string; ok: boolean; error?: string }> {
-  const id = `dl-${++downloadIdCounter}`;
-  const args = ["--no-playlist", "--newline", "--progress"];
+  onDone: (filename?: string, error?: string) => void,
+): Promise<void> {
+  ensureTemp();
+  const args = ["--no-playlist", "--newline", "--progress", "--no-part"];
 
   if (req.formatId) args.push("-f", req.formatId);
   if (req.audioBitrate) args.push("--audio-quality", req.audioBitrate);
   if (req.embedThumbnail) args.push("--embed-thumbnail");
 
-  args.push("-o", `${req.outputDir}/%(title).200s.%(ext)s`, req.url);
+  args.push("-o", join(TEMP_DIR, "%(title).200s.%(ext)s"));
+  args.push("--print", "after_move:FINAL:%(filepath)s");
+  args.push(req.url);
 
   try {
     const proc = spawn([YT_DLP, ...args], { stdout: "pipe", stderr: "pipe" });
     activeDownloads.set(id, proc);
 
-    // Read progress from stdout
+    let finalPath: string | undefined;
     const reader = proc.stdout.getReader();
     const decoder = new TextDecoder();
+    let buf = "";
 
     (async () => {
-      let buf = "";
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -84,8 +106,11 @@ export async function startDownload(
         const lines = buf.split("\n");
         buf = lines.pop() || "";
         for (const line of lines) {
-          if (line.includes("[download]")) {
-            onProgress(parseProgress(line), line.trim());
+          const trimmed = line.trim();
+          if (trimmed.startsWith("FINAL:")) {
+            finalPath = trimmed.slice("FINAL:".length).trim();
+          } else if (trimmed.includes("[download]")) {
+            onProgress(parseProgress(trimmed), trimmed);
           }
         }
       }
@@ -96,12 +121,17 @@ export async function startDownload(
 
     if (exitCode !== 0) {
       const stderr = await new Response(proc.stderr).text();
-      return { id, ok: false, error: stderr.trim() || `exited with code ${exitCode}` };
+      onDone(undefined, stderr.trim() || `exited with code ${exitCode}`);
+      return;
     }
-    return { id, ok: true };
+    if (!finalPath) {
+      onDone(undefined, "no se pudo determinar el archivo de salida");
+      return;
+    }
+    onDone(finalPath);
   } catch (e) {
     activeDownloads.delete(id);
-    return { id, ok: false, error: String(e) };
+    onDone(undefined, String(e));
   }
 }
 

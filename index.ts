@@ -9,8 +9,11 @@ import {
   startDownload,
   cancelDownload,
   cancelAllDownloads,
+  tempFilePath,
 } from "./apps/yt-downloader/dl";
-import { upscaleImage, listModels, defaultOutputDir } from "./apps/upscale/service";
+import { upscaleImage, listModels, outFilePath } from "./apps/upscale/service";
+import { basename } from "node:path";
+import { existsSync } from "node:fs";
 
 const STATE_FILE = `${import.meta.dir}/data/apps-state.json`;
 const PORT = Number(process.env.LOBBY_PORT || 3000);
@@ -26,7 +29,7 @@ for (const id of pm.pendingRestore()) {
 
 const progressStore = new Map<
   string,
-  { pct: number; line: string; done: boolean; error?: string }
+  { pct: number; line: string; done: boolean; error?: string; filename?: string }
 >();
 
 const app = new Hono();
@@ -96,11 +99,11 @@ app.all("/apps/:id/api/*", async (c) => {
       const dlId = `dl-${Date.now()}`;
       progressStore.set(dlId, { pct: 0, line: "", done: false });
 
-      const result = await startDownload(
+      await startDownload(
+        dlId,
         {
           url: String(body.url || ""),
           formatId: String(body.formatId || ""),
-          outputDir: String(body.outputDir || "C:\\Users\\Public\\Downloads"),
           audioBitrate: String(body.audioBitrate || ""),
           embedThumbnail: body.embedThumbnail === "1",
         },
@@ -108,14 +111,18 @@ app.all("/apps/:id/api/*", async (c) => {
           const entry = progressStore.get(dlId);
           if (entry) { entry.pct = pct; entry.line = line; }
         },
+        (filename, error) => {
+          const entry = progressStore.get(dlId);
+          if (entry) {
+            entry.done = true;
+            if (error) entry.error = error;
+            if (filename) entry.filename = basename(filename);
+          }
+        },
       );
 
       const entry = progressStore.get(dlId);
-      if (entry) {
-        entry.done = true;
-        if (!result.ok) entry.error = result.error;
-      }
-      return c.json({ ...result, id: dlId });
+      return c.json({ id: dlId, ok: !entry?.error, error: entry?.error });
     }
 
     if (c.req.method === "GET" && rest.startsWith("progress/")) {
@@ -123,6 +130,15 @@ app.all("/apps/:id/api/*", async (c) => {
       const entry = progressStore.get(dlId);
       if (!entry) return c.json({ done: true, error: "not found" });
       return c.json(entry);
+    }
+
+    if (c.req.method === "GET" && rest.startsWith("file/")) {
+      const dlId = rest.slice("file/".length);
+      const entry = progressStore.get(dlId);
+      if (!entry?.filename) return c.json({ error: "not ready" }, 404);
+      const full = tempFilePath(entry.filename);
+      if (!existsSync(full)) return c.json({ error: "file gone" }, 404);
+      return downloadResponse(full, entry.filename);
     }
 
     if (c.req.method === "POST" && rest.startsWith("cancel/")) {
@@ -146,7 +162,7 @@ app.all("/apps/:id/api/*", async (c) => {
     }
 
     if (c.req.method === "GET" && rest === "models") {
-      return c.json({ models: listModels(), defaultOutput: defaultOutputDir() });
+      return c.json({ models: listModels() });
     }
 
     if (c.req.method === "GET" && rest === "browse") {
@@ -162,11 +178,17 @@ app.all("/apps/:id/api/*", async (c) => {
       }
       const bytes = new Uint8Array(await file.arrayBuffer());
       const result = await upscaleImage(bytes, file.name, {
-        outputDir: String(body["outputDir"] || ""),
         scale: String(body["scale"] || "4"),
         model: String(body["model"] || "upscayl-standard-4x"),
       });
       return c.json(result);
+    }
+
+    if (c.req.method === "GET" && rest.startsWith("file/")) {
+      const name = basename(decodeURIComponent(rest.slice("file/".length)));
+      const full = outFilePath(name);
+      if (!existsSync(full)) return c.json({ error: "file gone" }, 404);
+      return downloadResponse(full, name);
     }
 
     return c.json({ error: "not found" }, 404);
@@ -233,6 +255,21 @@ async function serveFile(c: any, fullPath: string) {
   const file = Bun.file(fullPath);
   if (!(await file.exists())) return c.text("Not found", 404);
   return new Response(file);
+}
+
+/**
+ * Stream a produced file to the client's browser as an attachment.
+ * Bun infers the MIME type from the extension; we add Content-Disposition
+ * so the browser prompts "Guardar como" / uses its download folder.
+ */
+async function downloadResponse(fullPath: string, downloadName: string) {
+  const file = Bun.file(fullPath);
+  const safe = downloadName.replace(/[\r\n"]/g, "_");
+  return new Response(file, {
+    headers: {
+      "content-disposition": `attachment; filename*=UTF-8''${encodeURIComponent(safe)}`,
+    },
+  });
 }
 
 const server = serve({

@@ -86,12 +86,8 @@
 </div>
 
 <div class="section">
-  <label>Carpeta de descarga</label>
-  <div class="row">
-    <input id="outputDir" placeholder="Elegí una carpeta..." />
-    <button class="btn sec" onclick="openPicker()" style="flex:0 0 auto">Elegir</button>
-  </div>
-  <div class="hint" id="dirHint"></div>
+  <label>Guardado</label>
+  <div class="hint" id="saveHint">El archivo se descargará a tu PC (carpeta de Descargas o diálogo "Guardar como").</div>
 </div>
 
 <div class="check">
@@ -112,43 +108,48 @@
 </div>
 <div id="log"></div>
 
-<!-- Folder picker (server-side, for remote clients) -->
-<div class="modal" id="modal">
-  <div class="modal-box">
-    <div class="modal-head">
-      <h3 id="modalTitle">Elegir carpeta</h3>
-      <button onclick="closePicker()">&times;</button>
-    </div>
-    <div class="path-bar" id="curPath">C:\</div>
-    <div class="drive-row" id="drives"></div>
-    <div class="dir-list" id="dirs"></div>
-    <div style="display:flex; gap:8px; margin-top:14px">
-      <button class="btn" style="flex:1" onclick="pickCurrent()">Usar esta carpeta</button>
-      <button class="btn sec" onclick="closePicker()">Cancelar</button>
-    </div>
-  </div>
-</div>
-
 <script>
 let currentFormats = [];
 let downloadId = null;
 let progressInterval = null;
-let currentDir = "C:\\";
 let isLocal = false;
 const $ = (id) => document.getElementById(id);
+
+// ---- Preferences per browser (localStorage) ----
+const PREF_KEY = "lobby.ytdl.prefs";
+function savePrefs() {
+  try {
+    localStorage.setItem(PREF_KEY, JSON.stringify({
+      type: $("type").value,
+      abr: $("abr").value,
+      embedThumbnail: $("embedThumb").checked,
+      modelType: $("type").value,
+    }));
+  } catch {}
+}
+function loadPrefs() {
+  try {
+    const p = JSON.parse(localStorage.getItem(PREF_KEY) || "{}");
+    if (p.type) $("type").value = p.type;
+    if (p.abr) $("abr").value = p.abr;
+    if (typeof p.embedThumbnail === "boolean") $("embedThumb").checked = p.embedThumbnail;
+  } catch {}
+  toggleType();
+}
 
 // ---- Detect local vs remote client ----
 fetch("/api/client-info").then(r => r.json()).then(info => {
   isLocal = info.local;
-  $("dirHint").textContent = isLocal
-    ? "Tu PC (el servidor corre en local). Elegí cualquier carpeta."
-    : "Cliente en red: elegí una carpeta del servidor.";
-});
+  $("saveHint").textContent = isLocal
+    ? "Se descargará a tu PC. El navegador usará tu carpeta de Descargas o te preguntará dónde guardar."
+    : "Se descargará a tu PC (desde el servidor en red) usando la carpeta de Descargas de tu navegador.";
+}).catch(() => {});
 
 function toggleType() {
   const t = $("type").value;
   $("abrSection").style.display = t === "audio" ? "block" : "none";
   updateFormatOptions();
+  savePrefs();
 }
 
 function updateFormatOptions() {
@@ -205,62 +206,21 @@ async function fetchFormats() {
   btn.textContent = "Cargar formatos";
 }
 
-// ---- Folder picker ----
-function openPicker() {
-  loadDir($("outputDir").value || "C:\\");
-  $("modal").classList.add("open");
-}
-
-function closePicker() { $("modal").classList.remove("open"); }
-function pickCurrent() { $("outputDir").value = currentDir; closePicker(); }
-
-async function loadDir(path) {
-  const r = await fetch("/api/browse?path=" + encodeURIComponent(path));
-  const d = await r.json();
-  currentDir = d.currentPath;
-  $("curPath").textContent = currentDir;
-  const drives = $("drives");
-  drives.innerHTML = "";
-  for (const drv of (d.drives || [])) {
-    const b = document.createElement("button");
-    b.textContent = drv;
-    b.onclick = () => loadDir(drv);
-    drives.appendChild(b);
-  }
-  const list = $("dirs");
-  list.innerHTML = "";
-  if (d.parent) {
-    const it = document.createElement("div");
-    it.className = "dir-item";
-    it.innerHTML = '<span class="d">..</span> subir';
-    it.onclick = () => loadDir(d.parent);
-    list.appendChild(it);
-  }
-  for (const dir of d.dirs) {
-    const it = document.createElement("div");
-    it.className = "dir-item";
-    it.innerHTML = '<span class="d">&#128193;</span>' + dir.name;
-    it.onclick = () => loadDir(dir.path);
-    list.appendChild(it);
-  }
-}
-
 // ---- Download ----
 async function startDownload() {
   const url = $("url").value.trim();
   if (!url) { showLog("Pegá una URL"); return; }
   const fmt = $("format").value;
   if (!fmt) { showLog("Seleccioná un formato"); return; }
-  const outputDir = $("outputDir").value.trim();
-  if (!outputDir) { showLog("Elegí una carpeta de descarga"); return; }
   const abr = $("abr").value;
   const embed = $("embedThumb").checked;
+  savePrefs();
 
   $("dlBtn").disabled = true;
   $("progressArea").style.display = "block";
   $("cancelBtn").style.display = "inline-block";
 
-  const body = new URLSearchParams({ url, formatId: fmt, outputDir, embedThumbnail: embed ? "1" : "" });
+  const body = new URLSearchParams({ url, formatId: fmt, embedThumbnail: embed ? "1" : "" });
   if ($("type").value === "audio" && abr !== "0") body.set("audioBitrate", abr);
 
   showLog("Descargando...");
@@ -287,8 +247,13 @@ async function pollProgress(id) {
     if (d.done) {
       clearInterval(progressInterval);
       progressInterval = null;
-      if (d.error) showLog("Error: " + d.error);
-      else { setProgress(100); showLog("Descarga completada."); }
+      if (d.error) {
+        showLog("Error: " + d.error);
+      } else {
+        setProgress(100);
+        showLog("Listo. Iniciando descarga al navegador...");
+        triggerBrowserDownload(id);
+      }
       resetUI();
     } else {
       setProgress(d.pct || 0);
@@ -299,6 +264,15 @@ async function pollProgress(id) {
     progressInterval = null;
     resetUI();
   }
+}
+
+function triggerBrowserDownload(id) {
+  const a = document.createElement("a");
+  a.href = "/apps/yt-downloader/api/file/" + id;
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => a.remove(), 1000);
 }
 
 async function cancelDownload() {
@@ -327,6 +301,10 @@ function showLog(msg) {
   el.textContent += msg + "\n";
   el.scrollTop = el.scrollHeight;
 }
+
+$("abr").addEventListener("change", savePrefs);
+$("embedThumb").addEventListener("change", savePrefs);
+loadPrefs();
 </script>
 </body>
 </html>

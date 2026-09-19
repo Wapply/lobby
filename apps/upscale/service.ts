@@ -1,26 +1,27 @@
 import { spawn } from "bun";
 import { mkdirSync, existsSync, unlinkSync, writeFileSync } from "node:fs";
-import { extname, join } from "node:path";
+import { basename, extname, join } from "node:path";
 
 const BIN_DIR = "C:\\Portables\\upscayl-2.15.0-win\\resources\\bin";
 const UPSCAYL_EXE = join(BIN_DIR, "upscayl-bin.exe");
 const MODELS_DIR = "C:\\Portables\\upscayl-2.15.0-win\\resources\\models";
-const DEFAULT_OUTPUT = "C:\\w_lan";
-const UPLOADS_DIR = join(import.meta.dir, "uploads");
+const UPLOADS_DIR = join(import.meta.dir, ".uploads");
+const OUT_DIR = join(import.meta.dir, ".out");
 
 export interface UpscaleResult {
   ok: boolean;
-  outputPath?: string;
+  filename?: string;
+  downloadName?: string;
   error?: string;
 }
 
 export function ensureDirs() {
   if (!existsSync(UPLOADS_DIR)) mkdirSync(UPLOADS_DIR, { recursive: true });
-  if (!existsSync(DEFAULT_OUTPUT)) mkdirSync(DEFAULT_OUTPUT, { recursive: true });
+  if (!existsSync(OUT_DIR)) mkdirSync(OUT_DIR, { recursive: true });
 }
 
-export function defaultOutputDir() {
-  return DEFAULT_OUTPUT;
+export function outFilePath(name: string): string {
+  return join(OUT_DIR, name);
 }
 
 export function listModels(): { id: string; name: string }[] {
@@ -36,30 +37,18 @@ export function listModels(): { id: string; name: string }[] {
   return models.map((m) => ({ id: m, name: m }));
 }
 
-/**
- * Save an uploaded file to a temp location and upscale it with upscayl-bin.
- * Returns the final output path.
- */
 export async function upscaleImage(
   inputBytes: Uint8Array,
   originalName: string,
-  options: { outputDir?: string; scale?: string; model?: string },
+  options: { scale?: string; model?: string },
 ): Promise<UpscaleResult> {
   ensureDirs();
 
-  const ext = extname(originalName) || ".png";
-  const inputPath = join(UPLOADS_DIR, `${Date.now()}-${originalName}`);
-  const outputDir =
-    options.outputDir && options.outputDir.trim() ? options.outputDir : DEFAULT_OUTPUT;
-  const outputFileName = `upscaled-${Date.now()}${ext}`;
-
-  try {
-    mkdirSync(outputDir, { recursive: true });
-  } catch {
-    return { ok: false, error: `No se pudo crear la carpeta de salida: ${outputDir}` };
-  }
-
-  const outputPath = join(outputDir, outputFileName);
+  const safeName = basename(originalName || "image.png");
+  const ext = extname(safeName) || ".png";
+  const inputPath = join(UPLOADS_DIR, `${Date.now()}-${safeName}`);
+  const outName = `upscaled-${Date.now()}${ext}`;
+  const outputPath = join(OUT_DIR, outName);
   const scale = options.scale || "4";
   const model = options.model || "upscayl-standard-4x";
 
@@ -87,7 +76,7 @@ export async function upscaleImage(
     if (code !== 0) {
       return { ok: false, error: stderr.trim() || `upscayl-bin exited with code ${code}` };
     }
-    return { ok: true, outputPath };
+    return { ok: true, filename: outName, downloadName: `upscaled-${safeName}` };
   } catch (e) {
     return { ok: false, error: String(e) };
   }
