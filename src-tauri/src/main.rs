@@ -1,6 +1,6 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::Mutex;
 use tauri::{
     menu::{Menu, MenuItem},
@@ -8,24 +8,34 @@ use tauri::{
     Manager, RunEvent, WindowEvent,
 };
 
-struct LobbyProcess(Mutex<Option<u32>>);
+struct LobbyProcess(Mutex<Option<std::process::Child>>);
 
-fn spawn_bun(root: &std::path::Path) -> Result<u32, String> {
+fn spawn_bun(root: &std::path::Path) -> Result<std::process::Child, String> {
     let mut cmd = Command::new("bun");
     cmd.args(["run", "index.ts"]).current_dir(root);
-    // Suppress child process console on Windows
+    cmd.stdout(Stdio::null());
+    cmd.stderr(Stdio::null());
+    cmd.stdin(Stdio::null());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-        cmd.creation_flags(CREATE_NO_WINDOW);
+        cmd.creation_flags(0x08000000);
     }
-    // Always redirect stdio to avoid dangling console handles
-    cmd.stdout(std::process::Stdio::null());
-    cmd.stderr(std::process::Stdio::null());
-    cmd.stdin(std::process::Stdio::null());
-    let child = cmd.spawn().map_err(|e| format!("could not spawn bun: {e}"))?;
-    Ok(child.id())
+    cmd.spawn().map_err(|e| format!("could not spawn bun: {e}"))
+}
+
+fn kill_child(child: &mut std::process::Child) {
+    #[cfg(windows)]
+    {
+        let pid = child.id();
+        let _ = Command::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
+    }
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 fn find_project_root() -> Result<std::path::PathBuf, String> {
@@ -57,37 +67,23 @@ fn find_project_root() -> Result<std::path::PathBuf, String> {
 #[tauri::command]
 fn start_lobby(state: tauri::State<LobbyProcess>) -> Result<u32, String> {
     let mut guard = state.0.lock().unwrap();
-    if let Some(pid) = *guard {
-        return Ok(pid);
+    if guard.is_some() && guard.as_mut().unwrap().try_wait().ok().flatten().is_none() {
+        // already running
+        return Ok(guard.as_ref().unwrap().id());
     }
     let project_root = find_project_root()?;
-    let pid = spawn_bun(&project_root)?;
-    *guard = Some(pid);
+    let child = spawn_bun(&project_root)?;
+    let pid = child.id();
+    *guard = Some(child);
     Ok(pid)
 }
 
 #[tauri::command]
 fn stop_lobby(state: tauri::State<LobbyProcess>) -> Result<(), String> {
     let mut guard = state.0.lock().unwrap();
-    if let Some(pid) = guard.take() {
-        #[cfg(windows)]
-        {
-            let _ = Command::new("taskkill")
-                .args(["/PID", &pid.to_string(), "/T", "/F"])
-                .spawn();
-        }
-        #[cfg(not(windows))]
-        {
-            let _ = Command::new("kill").arg(pid.to_string()).spawn();
-        }
+    if let Some(mut child) = guard.take() {
+        kill_child(&mut child);
     }
-    Ok(())
-}
-
-#[tauri::command]
-fn open_lobby(window: tauri::WebviewWindow) -> Result<(), String> {
-    window.show().map_err(|e| e.to_string())?;
-    window.set_focus().map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -101,9 +97,8 @@ fn main() {
         }))
         .plugin(tauri_plugin_shell::init())
         .manage(LobbyProcess(Mutex::new(None)))
-        .invoke_handler(tauri::generate_handler![start_lobby, stop_lobby, open_lobby])
+        .invoke_handler(tauri::generate_handler![start_lobby, stop_lobby])
         .setup(|app| {
-            // Auto-start Bun lobby on launch (double-click -> tray + server)
             {
                 let state = app.state::<LobbyProcess>();
                 let _ = start_lobby(state);
@@ -134,7 +129,12 @@ fn main() {
                         let s = app.state::<LobbyProcess>();
                         let _ = stop_lobby(s);
                     }
-                    "quit" => app.exit(0),
+                    "quit" => {
+                        // kill bun child first, then exit
+                        let s = app.state::<LobbyProcess>();
+                        let _ = stop_lobby(s);
+                        app.exit(0);
+                    }
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
@@ -152,7 +152,6 @@ fn main() {
                 })
                 .build(app)?;
 
-            // Hide window on close -> keep tray alive
             if let Some(w) = app.get_webview_window("main") {
                 let w2 = w.clone();
                 w.on_window_event(move |ev| {
@@ -168,14 +167,9 @@ fn main() {
 
     let app = builder.build(tauri::generate_context!()).expect("tauri build failed");
 
-    app.run(|handle, event| {
-        if let RunEvent::ExitRequested { api, .. } = event {
-            // Stop Bun child on exit
-            if let Some(state) = handle.try_state::<LobbyProcess>() {
-                let _ = stop_lobby(state);
-            }
-            api.prevent_exit();
-            handle.exit(0);
+    app.run(|_handle, event| {
+        if let RunEvent::Exit = event {
+            // final cleanup happens via drop
         }
     });
 }
