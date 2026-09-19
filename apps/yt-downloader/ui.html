@@ -6,55 +6,250 @@
 <title>YT Downloader</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, sans-serif; }
-  body { background: #111; color: #fff; padding: 32px 40px; min-height: 100vh; }
+  body { background: #111; color: #fff; padding: 28px 36px; min-height: 100vh; font-size: 13px; }
   h1 { font-size: 20px; margin-bottom: 4px; }
-  p { color: #8a8a8a; margin-bottom: 24px; }
-  label { display: block; font-size: 12px; color: #8a8a8a; margin-bottom: 6px; }
-  .row { display: flex; gap: 8px; max-width: 540px; }
-  input, select { background: #0a0a0a; border: 1px solid #222; color: #fff; padding: 10px 12px; border-radius: 6px; outline: none; }
-  input { flex: 1; }
-  select { min-width: 110px; cursor: pointer; }
-  .actions { display: flex; gap: 8px; margin-top: 10px; }
-  .actions button { background: #fff; color: #000; border: none; padding: 10px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; }
-  .actions button:hover { opacity: 0.85; }
-  .actions button.sec { background: #222; color: #fff; border: 1px solid #333; }
-  .actions button.sec:hover { background: #333; }
-  #status { margin-top: 16px; color: #8a8a8a; font-size: 13px; white-space: pre-wrap; }
+  .sub { color: #8a8a8a; margin-bottom: 20px; }
+  .section { margin-bottom: 18px; }
+  .section label { display: block; font-size: 11px; color: #666; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+  input, select { background: #0a0a0a; border: 1px solid #222; color: #fff; padding: 9px 11px; border-radius: 6px; outline: none; width: 100%; font-size: 13px; }
+  select { cursor: pointer; appearance: none; }
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1; }
+  .btn-row { display: flex; gap: 8px; margin-top: 8px; }
+  .btn { background: #fff; color: #000; border: none; padding: 10px 18px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 13px; }
+  .btn:hover { opacity: 0.85; }
+  .btn.sec { background: #222; color: #fff; border: 1px solid #333; }
+  .btn.sec:hover { background: #333; }
+  .btn.danger { background: #e74c3c; color: #fff; }
+  .btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  /* Progress bar */
+  .progress-wrap { margin-top: 14px; background: #0a0a0a; border: 1px solid #222; border-radius: 6px; overflow: hidden; height: 24px; position: relative; }
+  .progress-fill { height: 100%; background: #2ecc71; width: 0%; transition: width 0.15s ease; }
+  .progress-text { position: absolute; inset: 0; display: grid; place-items: center; font-size: 11px; color: #fff; mix-blend-mode: difference; }
+  #log { margin-top: 12px; background: #0a0a0a; border: 1px solid #222; border-radius: 6px; padding: 10px; font-size: 11px; font-family: monospace; color: #8a8a8a; max-height: 140px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; display: none; }
+  .check { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+  .check input { width: auto; }
+  .check label { text-transform: none; color: #8a8a8a; font-size: 12px; }
 </style>
 </head>
 <body>
 <h1>YT Downloader</h1>
-<p>Descargá videos/audio con yt-dlp.</p>
-<div class="row">
-  <input id="url" placeholder="https://youtube.com/watch?v=..." />
-  <select id="quality">
-    <option value="best">Mejor calidad</option>
-    <option value="4k">4K</option>
-    <option value="1080p">1080p</option>
-    <option value="720p">720p</option>
-    <option value="480p">480p</option>
+<p class="sub">Descargá con yt-dlp v2026.06.09</p>
+
+<div class="section">
+  <label>URL del video</label>
+  <div class="row">
+    <input id="url" placeholder="https://youtube.com/watch?v=..." />
+    <button class="btn sec" onclick="fetchFormats()" id="fetchBtn" style="flex:0 0 auto; padding:9px 14px">Cargar formatos</button>
+  </div>
+</div>
+
+<div class="section">
+  <label>Tipo</label>
+  <select id="type" onchange="toggleType()">
+    <option value="video">Video</option>
+    <option value="audio">Solo Audio</option>
   </select>
 </div>
-<div class="actions">
-  <button onclick="download('audio')">Solo Audio (mp3)</button>
-  <button class="sec" onclick="download('video')">Video</button>
+
+<div class="section" id="formatSection">
+  <label>Formato / Calidad</label>
+  <select id="format"><option value="">Cargá una URL primero</option></select>
 </div>
-<div id="status"></div>
+
+<div class="section" id="abrSection" style="display:none">
+  <label>Calidad de audio (kbps)</label>
+  <select id="abr">
+    <option value="0">Mejor (original)</option>
+    <option value="64K">64 kbps</option>
+    <option value="128K" selected>128 kbps</option>
+    <option value="192K">192 kbps</option>
+    <option value="256K">256 kbps</option>
+    <option value="320K">320 kbps</option>
+  </select>
+</div>
+
+<div class="section">
+  <label>Carpeta de descarga</label>
+  <input id="outputDir" placeholder="C:\Users\...\Downloads" />
+</div>
+
+<div class="check">
+  <input type="checkbox" id="embedThumb" checked />
+  <label for="embedThumb">Incrustar miniatura</label>
+</div>
+
+<div class="btn-row">
+  <button class="btn" onclick="startDownload()" id="dlBtn">Descargar</button>
+  <button class="btn danger" onclick="cancelDownload()" id="cancelBtn" style="display:none">Cancelar</button>
+</div>
+
+<div id="progressArea" style="display:none">
+  <div class="progress-wrap">
+    <div class="progress-fill" id="progressFill"></div>
+    <div class="progress-text" id="progressText">0%</div>
+  </div>
+</div>
+<div id="log"></div>
+
 <script>
-async function download(type) {
-  const s = document.getElementById("status");
-  const url = document.getElementById("url").value;
-  if (!url) { s.textContent = "Pegá una URL."; return; }
-  s.textContent = "Descargando...";
-  const quality = document.getElementById("quality").value;
-  const endpoint = type === "video" ? "download-video" : "download";
-  const r = await fetch("/apps/yt-downloader/api/" + endpoint, {
-    method: "POST",
-    body: new URLSearchParams({ url, quality }),
-  });
-  const d = await r.json();
-  s.textContent = d.ok ? "Listo." : "Error: " + (d.error || "desconocido");
+let currentFormats = [];
+let downloadId = null;
+let progressInterval = null;
+
+function toggleType() {
+  const t = document.getElementById("type").value;
+  document.getElementById("abrSection").style.display = t === "audio" ? "block" : "none";
+  updateFormatOptions();
 }
+
+function updateFormatOptions() {
+  const sel = document.getElementById("format");
+  const type = document.getElementById("type").value;
+  sel.innerHTML = "";
+  if (!currentFormats.length) {
+    sel.innerHTML = '<option value="">Cargá una URL primero</option>';
+    return;
+  }
+  const filtered = currentFormats.filter(f => {
+    if (type === "audio") return f.acodec !== "none";
+    return f.vcodec !== "none";
+  });
+  if (!filtered.length) {
+    sel.innerHTML = '<option value="">Sin formatos disponibles</option>';
+    return;
+  }
+  for (const f of filtered) {
+    const opt = document.createElement("option");
+    opt.value = f.id;
+    const res = f.resolution || "";
+    const size = f.filesize ? " (" + (f.filesize / 1024 / 1024).toFixed(1) + "MB)" : "";
+    const note = f.formatNote ? " - " + f.formatNote : "";
+    opt.textContent = `${f.id}: ${res} ${f.ext}${note}${size}`;
+    sel.appendChild(opt);
+  }
+}
+
+async function fetchFormats() {
+  const url = document.getElementById("url").value.trim();
+  if (!url) { showLog("Pegá una URL"); return; }
+  const btn = document.getElementById("fetchBtn");
+  btn.disabled = true;
+  btn.textContent = "Cargando...";
+  showLog("Obteniendo formatos...");
+  try {
+    const r = await fetch("/apps/yt-downloader/api/list-formats", {
+      method: "POST",
+      body: new URLSearchParams({ url }),
+    });
+    const d = await r.json();
+    if (d.ok && d.formats) {
+      currentFormats = d.formats;
+      updateFormatOptions();
+      showLog(`Formatos cargados: ${d.formats.length} disponibles`);
+    } else {
+      showLog("Error: " + (d.error || "desconocido"));
+    }
+  } catch (e) {
+    showLog("Error de red: " + e.message);
+  }
+  btn.disabled = false;
+  btn.textContent = "Cargar formatos";
+}
+
+async function startDownload() {
+  const url = document.getElementById("url").value.trim();
+  if (!url) { showLog("Pegá una URL"); return; }
+  const fmt = document.getElementById("format").value;
+  if (!fmt) { showLog("Seleccioná un formato"); return; }
+
+  let outputDir = document.getElementById("outputDir").value.trim();
+  if (!outputDir) outputDir = "C:\\Users\\klein\\Downloads";
+  const abr = document.getElementById("abr").value;
+  const embed = document.getElementById("embedTh").checked;
+
+  document.getElementById("dlBtn").disabled = true;
+  document.getElementById("progressArea").style.display = "block";
+  document.getElementById("cancelBtn").style.display = "inline-block";
+
+  const body = new URLSearchParams({ url, formatId: fmt, outputDir, embedThumbnail: embed ? "1" : "" });
+  if (document.getElementById("type").value === "audio" && abr !== "0") body.set("audioBitrate", abr);
+
+  showLog("Descargando...");
+  try {
+    const r = await fetch("/apps/yt-downloader/api/start-download", {
+      method: "POST",
+      body,
+    });
+    const d = await r.json();
+    if (d.ok) {
+      downloadId = d.id;
+      // Poll progress
+      progressInterval = setInterval(() => pollProgress(d.id), 300);
+    } else {
+      showLog("Error: " + (d.error || "desconocido"));
+      resetUI();
+    }
+  } catch (e) {
+    showLog("Error de red: " + e.message);
+    resetUI();
+  }
+}
+
+async function pollProgress(id) {
+  try {
+    const r = await fetch("/apps/yt-downloader/api/progress/" + id);
+    const d = await r.json();
+    if (d.done) {
+      clearInterval(progressInterval);
+      progressInterval = null;
+      if (d.error) {
+        showLog("Error: " + d.error);
+      } else {
+        setProgress(100);
+        showLog("Descarga completada.");
+      }
+      resetUI();
+    } else {
+      setProgress(d.pct || 0);
+      if (d.line) showLog(d.line);
+    }
+  } catch {
+    clearInterval(progressInterval);
+    progressInterval = null;
+    resetUI();
+  }
+}
+
+async function cancelDownload() {
+  if (!downloadId) return;
+  await fetch("/apps/yt-downloader/api/cancel/" + downloadId, { method: "POST" });
+  clearInterval(progressInterval);
+  progressInterval = null;
+  showLog("Cancelado.");
+  resetUI();
+}
+
+function setProgress(pct) {
+  document.getElementById("progressFill").style.width = pct + "%";
+  document.getElementById("progressText").textContent = pct.toFixed(1) + "%";
+}
+
+function resetUI() {
+  document.getElementById("dlBtn").disabled = false;
+  document.getElementById("cancelBtn").style.display = "none";
+  downloadId = null;
+}
+
+function showLog(msg) {
+  const el = document.getElementById("log");
+  el.style.display = "block";
+  el.textContent += msg + "\n";
+  el.scrollTop = el.scrollHeight;
+}
+
+// Set default download path
+document.getElementById("outputDir").value = "C:\\Users\\klein\\Downloads";
 </script>
 </body>
 </html>

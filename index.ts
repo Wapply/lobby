@@ -2,7 +2,12 @@ import { Hono } from "hono";
 import { serve } from "bun";
 import { APPS, getApp } from "./core/registry";
 import { ProcessManager } from "./core/process-manager";
-import { downloadAudio, downloadVideo } from "./apps/yt-downloader/dl";
+import {
+  listFormats,
+  startDownload,
+  cancelDownload,
+  cancelAllDownloads,
+} from "./apps/yt-downloader/dl";
 
 const STATE_FILE = `${import.meta.dir}/data/apps-state.json`;
 
@@ -13,6 +18,9 @@ for (const id of pm.pendingRestore()) {
   const def = getApp(id);
   if (def) await pm.start(def);
 }
+
+// In-memory progress store: downloadId -> { pct, line }
+const progressStore = new Map<string, { pct: number; line: string; done: boolean; error?: string }>();
 
 const app = new Hono();
 
@@ -27,50 +35,74 @@ app.get("/apps/:id/ui", async (c) => {
   return serveFile(c, `${import.meta.dir}/${def.ui}`);
 });
 
-// Proxy API — only for apps that run as child processes
 app.all("/apps/:id/api/*", async (c) => {
   const id = c.req.param("id");
   const def = getApp(id);
   if (!def) return c.json({ error: "not found" }, 404);
 
-  // yt-downloader is built-in, handled directly
   if (id === "yt-downloader") {
     const rest = c.req.path.slice(`/apps/${id}/api/`.length);
-    if (c.req.method === "POST" && rest === "download") {
+
+    if (c.req.method === "POST" && rest === "list-formats") {
       const body = await c.req.parseBody();
-      const result = await downloadAudio({
-        url: String(body.url || ""),
-        format: String(body.format || ""),
-        audioOnly: true,
-      });
-      return c.json(result);
+      return c.json(await listFormats(String(body.url || "")));
     }
-    if (c.req.method === "POST" && rest === "download-video") {
+
+    if (c.req.method === "POST" && rest === "start-download") {
       const body = await c.req.parseBody();
-      const result = await downloadVideo({
-        url: String(body.url || ""),
-        quality: String(body.quality || "best"),
-      });
-      return c.json(result);
+      const dlId = `dl-${Date.now()}`;
+      progressStore.set(dlId, { pct: 0, line: "", done: false });
+
+      const result = await startDownload(
+        {
+          url: String(body.url || ""),
+          formatId: String(body.formatId || ""),
+          outputDir: String(body.outputDir || "C:\\Users\\klein\\Downloads"),
+          audioBitrate: String(body.audioBitrate || ""),
+          embedThumbnail: body.embedThumbnail === "1",
+        },
+        (pct, line) => {
+          const entry = progressStore.get(dlId);
+          if (entry) { entry.pct = pct; entry.line = line; }
+        },
+      );
+
+      const entry = progressStore.get(dlId);
+      if (entry) {
+        entry.done = true;
+        if (!result.ok) entry.error = result.error;
+      }
+      return c.json({ ...result, id: dlId });
     }
+
+    if (c.req.method === "GET" && rest.startsWith("progress/")) {
+      const dlId = rest.slice("progress/".length);
+      const entry = progressStore.get(dlId);
+      if (!entry) return c.json({ done: true, error: "not found" });
+      return c.json(entry);
+    }
+
+    if (c.req.method === "POST" && rest.startsWith("cancel/")) {
+      const dlId = rest.slice("cancel/".length);
+      const ok = cancelDownload(dlId);
+      progressStore.set(dlId, { pct: 0, line: "cancelado", done: true, error: "cancelado" });
+      return c.json({ ok });
+    }
+
     if (c.req.method === "GET" && rest === "status") {
       return c.json({ ok: true });
     }
+
     return c.json({ error: "not found" }, 404);
   }
 
-  // For other apps, proxy to child process
   if (pm.status(id) !== "running") {
     return c.json({ error: "app not running" }, 409);
   }
   const rest = c.req.path.slice(`/apps/${def.id}/api/`.length);
   const url = `http://127.0.0.1:${def.port}/${rest}`;
   const body = ["GET", "HEAD"].includes(c.req.method) ? undefined : await c.req.text();
-  const upstream = await fetch(url, {
-    method: c.req.method,
-    headers: c.req.header(),
-    body,
-  });
+  const upstream = await fetch(url, { method: c.req.method, headers: c.req.header(), body });
   return new Response(await upstream.arrayBuffer(), {
     status: upstream.status,
     headers: { "content-type": upstream.headers.get("content-type") || "application/json" },
@@ -92,9 +124,7 @@ app.get("/api/apps", (c) => {
 app.post("/api/apps/:id/start", async (c) => {
   const def = getApp(c.req.param("id"));
   if (!def) return c.json({ error: "not found" }, 404);
-  if (def.id === "yt-downloader") {
-    return c.json({ id: def.id, status: "running" });
-  }
+  if (def.id === "yt-downloader") return c.json({ id: def.id, status: "running" });
   await pm.start(def);
   await pm.savePersisted();
   return c.json({ id: def.id, status: pm.status(def.id) });
@@ -103,15 +133,13 @@ app.post("/api/apps/:id/start", async (c) => {
 app.post("/api/apps/:id/stop", async (c) => {
   const def = getApp(c.req.param("id"));
   if (!def) return c.json({ error: "not found" }, 404);
-  if (def.id === "yt-downloader") {
-    return c.json({ id: def.id, status: "running" });
-  }
+  if (def.id === "yt-downloader") return c.json({ id: def.id, status: "running" });
   pm.stop(def.id);
   await pm.savePersisted();
   return c.json({ id: def.id, status: pm.status(def.id) });
 });
 
-app.post("/api/:id/restart", async (c) => {
+app.post("/api/apps/:id/restart", async (c) => {
   const def = getApp(c.req.param("id"));
   if (!def) return c.json({ error: "not found" }, 404);
   if (def.id === "yt-downloader") return c.json({ id: def.id, status: "running" });
@@ -120,17 +148,10 @@ app.post("/api/:id/restart", async (c) => {
 });
 
 app.post("/api/stop-all", async (c) => {
+  cancelAllDownloads();
   pm.stopAll();
   await pm.savePersisted();
   return c.json({ ok: true });
-});
-
-app.get("/api/health/:id", async (c) => {
-  const def = getApp(c.req.param("id"));
-  if (!def) return c.json({ ok: false }, 404);
-  if (def.id === "yt-downloader") return c.json({ ok: true });
-  const ok = pm.status(def.id) === "running" && (await probe(def.port));
-  return c.json({ ok });
 });
 
 function probe(port: number): Promise<boolean> {
