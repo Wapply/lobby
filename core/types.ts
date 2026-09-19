@@ -22,9 +22,3 @@ export interface AppState {
   startedAt?: number;
   lastError?: string;
 }
-
-export interface LobbyState {
-  /** Which apps are toggled on, persisted across restarts. */
-  enabled: Record<string, boolean>;
-  running: Record<string, AppState>;
-}

@@ -59,6 +59,8 @@
   .toggle input:checked + .slider::after { transform: translateX(16px); }
   .toggle.loading .slider { background: #555; opacity: 0.5; }
 
+  .lan-info { padding: 8px 16px 12px; font-size: 10px; color: #444; font-family: monospace; word-break: break-all; }
+
   footer { padding: 14px 16px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--muted); }
   footer button { background: none; border: 1px solid var(--line); color: var(--fg); padding: 6px 10px; border-radius: 6px; cursor: pointer; }
   footer button:hover { background: var(--panel); }
@@ -79,6 +81,7 @@
     <span id="running-count">0 corriendo</span>
     <button onclick="stopAll()">Stop All</button>
   </footer>
+  <div class="lan-info" id="lanInfo"></div>
 </aside>
 <main>
   <div class="empty" id="empty">Seleccioná una app</div>
@@ -166,6 +169,16 @@ function toast(msg) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove("show"), 2200);
 }
+
+// Show LAN access info
+fetch("/api/client-info").then(r => r.json()).then(info => {
+  const el = $("lanInfo");
+  if (info.local) {
+    el.textContent = "LAN: http://" + info.lanIp + ":3000";
+  } else {
+    el.textContent = "Conectado vía red";
+  }
+}).catch(() => {});
 
 load();
 setInterval(load, 3000);

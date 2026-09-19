@@ -6,28 +6,220 @@
 <title>Upscale</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, sans-serif; }
-  body { background: #111; color: #fff; padding: 40px; min-height: 100vh; }
+  body { background: #111; color: #fff; padding: 28px 36px; min-height: 100vh; font-size: 13px; }
   h1 { font-size: 20px; margin-bottom: 4px; }
-  p { color: #8a8a8a; margin-bottom: 24px; }
-  input[type=file] { color: #8a8a8a; margin-bottom: 16px; }
-  button { background: #fff; color: #000; border: none; padding: 10px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; }
-  button:hover { opacity: 0.85; }
-  #status { margin-top: 16px; color: #8a8a8a; font-size: 13px; }
+  .sub { color: #8a8a8a; margin-bottom: 20px; }
+  .section { margin-bottom: 16px; }
+  .section > label { display: block; font-size: 11px; color: #666; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+  input, select { background: #0a0a0a; border: 1px solid #222; color: #fff; padding: 9px 11px; border-radius: 6px; outline: none; width: 100%; font-size: 13px; }
+  .row { display: flex; gap: 8px; }
+  .row > input { flex: 1; }
+  .btn { background: #fff; color: #000; border: none; padding: 10px 18px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 13px; }
+  .btn:hover { opacity: 0.85; }
+  .btn.sec { background: #222; color: #fff; border: 1px solid #333; }
+  .btn.sec:hover { background: #333; }
+  .btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  /* Dropzone */
+  .drop { border: 1px dashed #333; border-radius: 8px; padding: 32px; text-align: center; cursor: pointer; transition: all 0.15s; }
+  .drop:hover, .drop.drag { border-color: #fff; background: #1a1a1a; }
+  .drop .icon { font-size: 28px; margin-bottom: 8px; color: #666; }
+  .drop .name { font-weight: 600; color: #fff; }
+  .drop .hint { color: #666; font-size: 11px; margin-top: 4px; }
+  .scale-btns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .scale-btns button { background: #0a0a0a; border: 1px solid #222; color: #8a8a8a; padding: 12px; border-radius: 6px; cursor: pointer; font-weight: 600; }
+  .scale-btns button.active { background: #fff; color: #000; border-color: #fff; }
+  .status { margin-top: 14px; padding: 10px 14px; border-radius: 6px; font-size: 12px; display: none; }
+  .status.ok { background: #0a1f0a; border: 1px solid #2ecc71; color: #2ecc71; display: block; }
+  .status.err { background: #1f0a0a; border: 1px solid #e74c3c; color: #e74c3c; display: block; }
+  .status.busy { background: #0a0a1f; border: 1px solid #555; color: #8a8a8a; display: block; }
+  /* Folder picker modal */
+  .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: none; align-items: center; justify-content: center; z-index: 100; }
+  .modal.open { display: flex; }
+  .modal-box { background: #111; border: 1px solid #222; border-radius: 8px; width: 520px; max-width: 90vw; padding: 20px; }
+  .modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .modal-head h3 { font-size: 15px; }
+  .modal-head button { background: none; border: none; color: #8a8a8a; cursor: pointer; font-size: 18px; }
+  .path-bar { background: #0a0a0a; border: 1px solid #222; border-radius: 6px; padding: 8px 10px; font-family: monospace; font-size: 11px; color: #8a8a8a; margin-bottom: 10px; word-break: break-all; }
+  .dir-list { max-height: 300px; overflow-y: auto; border: 1px solid #222; border-radius: 6px; }
+  .dir-item { padding: 9px 12px; cursor: pointer; border-bottom: 1px solid #1a1a1a; display: flex; gap: 8px; }
+  .dir-item:last-child { border-bottom: none; }
+  .dir-item:hover { background: #1a1a1a; }
+  .dir-item .d { color: #666; }
+  .drive-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .drive-row button { background: #1a1a1a; border: 1px solid #222; color: #fff; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 11px; }
+  .drive-row button:hover { background: #333; }
 </style>
 </head>
 <body>
 <h1>Upscale</h1>
-<p>Escalado de imágenes. Módulo de ejemplo — el handler aún no está implementado.</p>
-<label>Siguiente: procesar con Real-ESRGAN.</label>
-<div style="margin-top:24px"><button onclick="probe()">Probar servicio</button></div>
-<div id="status"></div>
+<p class="sub">Escalado de imágenes con IA · Real-ESRGAN</p>
+
+<div class="section">
+  <div class="drop" id="drop">
+    <div class="icon">&#8593;</div>
+    <div class="name" id="fileName">Elegí o arrastrá una imagen</div>
+    <div class="hint">JPG · PNG · WEBP</div>
+  </div>
+  <input type="file" id="file" accept="image/*" style="display:none" />
+</div>
+
+<div class="section">
+  <label>Factor de escala</label>
+  <div class="scale-btns" id="scaleBtns">
+    <button data-s="2">2x</button>
+    <button data-s="3">3x</button>
+    <button data-s="4" class="active">4x</button>
+  </div>
+</div>
+
+<div class="section">
+  <label>Modelo</label>
+  <select id="model"></select>
+</div>
+
+<div class="section">
+  <label>Carpeta de destino</label>
+  <div class="row">
+    <input id="outputDir" value="C:\w_lan" />
+    <button class="btn sec" onclick="openPicker()" style="flex:0 0 auto">Elegir</button>
+  </div>
+</div>
+
+<button class="btn" id="goBtn" style="width:100%; margin-top:4px">Escalar imagen</button>
+<div class="status" id="status"></div>
+
+<!-- Folder picker -->
+<div class="modal" id="modal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h3>Elegir carpeta</h3>
+      <button onclick="closePicker()">&times;</button>
+    </div>
+    <div class="path-bar" id="curPath">C:\</div>
+    <div class="drive-row" id="drives"></div>
+    <div class="dir-list" id="dirs"></div>
+    <div style="display:flex; gap:8px; margin-top:14px">
+      <button class="btn" style="flex:1" onclick="pickCurrent()">Usar esta carpeta</button>
+      <button class="btn sec" onclick="closePicker()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <script>
-async function probe() {
-  const s = document.getElementById("status");
-  const r = await fetch("/apps/upscale/api/status");
-  const d = await r.json();
-  s.textContent = "Servicio: " + JSON.stringify(d);
+let selectedFile = null;
+let scale = "4";
+let currentDir = "C:\\";
+let pendingDir = "C:\\";
+
+// Load models
+fetch("/apps/upscale/api/models").then(r => r.json()).then(d => {
+  const sel = document.getElementById("model");
+  sel.innerHTML = "";
+  for (const m of d.models) {
+    const o = document.createElement("option");
+    o.value = m.id; o.textContent = m.name;
+    sel.appendChild(o);
+  }
+});
+
+const drop = document.getElementById("drop");
+const fileInput = document.getElementById("file");
+drop.onclick = () => fileInput.click();
+fileInput.onchange = (e) => setFile(e.target.files[0]);
+drop.ondragover = (e) => { e.preventDefault(); drop.classList.add("drag"); };
+drop.ondragleave = () => drop.classList.remove("drag");
+drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove("drag"); setFile(e.dataTransfer.files[0]); };
+
+function setFile(f) {
+  if (!f) return;
+  selectedFile = f;
+  document.getElementById("fileName").textContent = f.name;
 }
+
+document.querySelectorAll("#scaleBtns button").forEach(b => {
+  b.onclick = () => {
+    document.querySelectorAll("#scaleBtns button").forEach(x => x.classList.remove("active"));
+    b.classList.add("active");
+    scale = b.dataset.s;
+  };
+});
+
+async function openPicker() {
+  await loadDir(document.getElementById("outputDir").value || "C:\\");
+  document.getElementById("modal").classList.add("open");
+}
+
+function closePicker() {
+  document.getElementById("modal").classList.remove("open");
+}
+
+function pickCurrent() {
+  document.getElementById("outputDir").value = currentDir;
+  closePicker();
+}
+
+async function loadDir(path) {
+  const r = await fetch("/apps/upscale/api/browse?path=" + encodeURIComponent(path));
+  const d = await r.json();
+  currentDir = d.currentPath;
+  document.getElementById("curPath").textContent = currentDir;
+
+  const drives = document.getElementById("drives");
+  drives.innerHTML = "";
+  for (const drv of (d.drives || [])) {
+    const b = document.createElement("button");
+    b.textContent = drv;
+    b.onclick = () => loadDir(drv);
+    drives.appendChild(b);
+  }
+
+  const list = document.getElementById("dirs");
+  list.innerHTML = "";
+  if (d.parent) {
+    const it = document.createElement("div");
+    it.className = "dir-item";
+    it.innerHTML = '<span class="d">..</span> subir';
+    it.onclick = () => loadDir(d.parent);
+    list.appendChild(it);
+  }
+  for (const dir of d.dirs) {
+    const it = document.createElement("div");
+    it.className = "dir-item";
+    it.innerHTML = '<span class="d">&#128193;</span>' + dir.name;
+    it.onclick = () => loadDir(dir.path);
+    list.appendChild(it);
+  }
+}
+
+async function go() {
+  const st = document.getElementById("status");
+  if (!selectedFile) {
+    st.className = "status err"; st.textContent = "Elegí una imagen primero.";
+    return;
+  }
+  st.className = "status busy"; st.textContent = "Escalando... puede tardar.";
+  const fd = new FormData();
+  fd.append("image", selectedFile);
+  fd.append("outputDir", document.getElementById("outputDir").value);
+  fd.append("scale", scale);
+  fd.append("model", document.getElementById("model").value);
+  try {
+    const r = await fetch("/apps/upscale/api/upscale", { method: "POST", body: fd });
+    const d = await r.json();
+    if (d.ok) {
+      st.className = "status ok";
+      st.textContent = "Listo! Guardado en: " + d.outputPath;
+    } else {
+      st.className = "status err";
+      st.textContent = "Error: " + (d.error || "desconocido");
+    }
+  } catch (e) {
+    st.className = "status err";
+    st.textContent = "Error de red: " + e.message;
+  }
+}
+
+document.getElementById("goBtn").onclick = go;
 </script>
 </body>
 </html>

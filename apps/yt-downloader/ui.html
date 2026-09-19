@@ -9,20 +9,19 @@
   body { background: #111; color: #fff; padding: 28px 36px; min-height: 100vh; font-size: 13px; }
   h1 { font-size: 20px; margin-bottom: 4px; }
   .sub { color: #8a8a8a; margin-bottom: 20px; }
-  .section { margin-bottom: 18px; }
-  .section label { display: block; font-size: 11px; color: #666; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .section { margin-bottom: 16px; }
+  .section > label { display: block; font-size: 11px; color: #666; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
   input, select { background: #0a0a0a; border: 1px solid #222; color: #fff; padding: 9px 11px; border-radius: 6px; outline: none; width: 100%; font-size: 13px; }
-  select { cursor: pointer; appearance: none; }
+  select { cursor: pointer; }
   .row { display: flex; gap: 8px; }
-  .row > * { flex: 1; }
-  .btn-row { display: flex; gap: 8px; margin-top: 8px; }
+  .row > input { flex: 1; }
   .btn { background: #fff; color: #000; border: none; padding: 10px 18px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 13px; }
   .btn:hover { opacity: 0.85; }
   .btn.sec { background: #222; color: #fff; border: 1px solid #333; }
   .btn.sec:hover { background: #333; }
   .btn.danger { background: #e74c3c; color: #fff; }
   .btn:disabled { opacity: 0.3; cursor: not-allowed; }
-  /* Progress bar */
+  .btn-row { display: flex; gap: 8px; margin-top: 8px; }
   .progress-wrap { margin-top: 14px; background: #0a0a0a; border: 1px solid #222; border-radius: 6px; overflow: hidden; height: 24px; position: relative; }
   .progress-fill { height: 100%; background: #2ecc71; width: 0%; transition: width 0.15s ease; }
   .progress-text { position: absolute; inset: 0; display: grid; place-items: center; font-size: 11px; color: #fff; mix-blend-mode: difference; }
@@ -30,17 +29,34 @@
   .check { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
   .check input { width: auto; }
   .check label { text-transform: none; color: #8a8a8a; font-size: 12px; }
+  /* Folder picker modal */
+  .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: none; align-items: center; justify-content: center; z-index: 100; }
+  .modal.open { display: flex; }
+  .modal-box { background: #111; border: 1px solid #222; border-radius: 8px; width: 520px; max-width: 90vw; padding: 20px; }
+  .modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .modal-head h3 { font-size: 15px; }
+  .modal-head button { background: none; border: none; color: #8a8a8a; cursor: pointer; font-size: 18px; }
+  .path-bar { background: #0a0a0a; border: 1px solid #222; border-radius: 6px; padding: 8px 10px; font-family: monospace; font-size: 11px; color: #8a8a8a; margin-bottom: 10px; word-break: break-all; }
+  .dir-list { max-height: 300px; overflow-y: auto; border: 1px solid #222; border-radius: 6px; }
+  .dir-item { padding: 9px 12px; cursor: pointer; border-bottom: 1px solid #1a1a1a; display: flex; gap: 8px; }
+  .dir-item:last-child { border-bottom: none; }
+  .dir-item:hover { background: #1a1a1a; }
+  .dir-item .d { color: #666; }
+  .drive-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .drive-row button { background: #1a1a1a; border: 1px solid #222; color: #fff; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 11px; }
+  .drive-row button:hover { background: #333; }
+  .hint { color: #555; font-size: 11px; margin-top: 4px; }
 </style>
 </head>
 <body>
 <h1>YT Downloader</h1>
-<p class="sub">Descargá con yt-dlp v2026.06.09</p>
+<p class="sub">Descargá con yt-dlp</p>
 
 <div class="section">
   <label>URL del video</label>
   <div class="row">
     <input id="url" placeholder="https://youtube.com/watch?v=..." />
-    <button class="btn sec" onclick="fetchFormats()" id="fetchBtn" style="flex:0 0 auto; padding:9px 14px">Cargar formatos</button>
+    <button class="btn sec" onclick="fetchFormats()" id="fetchBtn" style="flex:0 0 auto">Cargar formatos</button>
   </div>
 </div>
 
@@ -71,7 +87,11 @@
 
 <div class="section">
   <label>Carpeta de descarga</label>
-  <input id="outputDir" placeholder="C:\Users\...\Downloads" />
+  <div class="row">
+    <input id="outputDir" placeholder="Elegí una carpeta..." />
+    <button class="btn sec" onclick="openPicker()" style="flex:0 0 auto">Elegir</button>
+  </div>
+  <div class="hint" id="dirHint"></div>
 </div>
 
 <div class="check">
@@ -92,20 +112,48 @@
 </div>
 <div id="log"></div>
 
+<!-- Folder picker (server-side, for remote clients) -->
+<div class="modal" id="modal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h3 id="modalTitle">Elegir carpeta</h3>
+      <button onclick="closePicker()">&times;</button>
+    </div>
+    <div class="path-bar" id="curPath">C:\</div>
+    <div class="drive-row" id="drives"></div>
+    <div class="dir-list" id="dirs"></div>
+    <div style="display:flex; gap:8px; margin-top:14px">
+      <button class="btn" style="flex:1" onclick="pickCurrent()">Usar esta carpeta</button>
+      <button class="btn sec" onclick="closePicker()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <script>
 let currentFormats = [];
 let downloadId = null;
 let progressInterval = null;
+let currentDir = "C:\\";
+let isLocal = false;
+const $ = (id) => document.getElementById(id);
+
+// ---- Detect local vs remote client ----
+fetch("/api/client-info").then(r => r.json()).then(info => {
+  isLocal = info.local;
+  $("dirHint").textContent = isLocal
+    ? "Tu PC (el servidor corre en local). Elegí cualquier carpeta."
+    : "Cliente en red: elegí una carpeta del servidor.";
+});
 
 function toggleType() {
-  const t = document.getElementById("type").value;
-  document.getElementById("abrSection").style.display = t === "audio" ? "block" : "none";
+  const t = $("type").value;
+  $("abrSection").style.display = t === "audio" ? "block" : "none";
   updateFormatOptions();
 }
 
 function updateFormatOptions() {
-  const sel = document.getElementById("format");
-  const type = document.getElementById("type").value;
+  const sel = $("format");
+  const type = $("type").value;
   sel.innerHTML = "";
   if (!currentFormats.length) {
     sel.innerHTML = '<option value="">Cargá una URL primero</option>';
@@ -131,9 +179,9 @@ function updateFormatOptions() {
 }
 
 async function fetchFormats() {
-  const url = document.getElementById("url").value.trim();
+  const url = $("url").value.trim();
   if (!url) { showLog("Pegá una URL"); return; }
-  const btn = document.getElementById("fetchBtn");
+  const btn = $("fetchBtn");
   btn.disabled = true;
   btn.textContent = "Cargando...";
   showLog("Obteniendo formatos...");
@@ -157,34 +205,70 @@ async function fetchFormats() {
   btn.textContent = "Cargar formatos";
 }
 
+// ---- Folder picker ----
+function openPicker() {
+  loadDir($("outputDir").value || "C:\\");
+  $("modal").classList.add("open");
+}
+
+function closePicker() { $("modal").classList.remove("open"); }
+function pickCurrent() { $("outputDir").value = currentDir; closePicker(); }
+
+async function loadDir(path) {
+  const r = await fetch("/api/browse?path=" + encodeURIComponent(path));
+  const d = await r.json();
+  currentDir = d.currentPath;
+  $("curPath").textContent = currentDir;
+  const drives = $("drives");
+  drives.innerHTML = "";
+  for (const drv of (d.drives || [])) {
+    const b = document.createElement("button");
+    b.textContent = drv;
+    b.onclick = () => loadDir(drv);
+    drives.appendChild(b);
+  }
+  const list = $("dirs");
+  list.innerHTML = "";
+  if (d.parent) {
+    const it = document.createElement("div");
+    it.className = "dir-item";
+    it.innerHTML = '<span class="d">..</span> subir';
+    it.onclick = () => loadDir(d.parent);
+    list.appendChild(it);
+  }
+  for (const dir of d.dirs) {
+    const it = document.createElement("div");
+    it.className = "dir-item";
+    it.innerHTML = '<span class="d">&#128193;</span>' + dir.name;
+    it.onclick = () => loadDir(dir.path);
+    list.appendChild(it);
+  }
+}
+
+// ---- Download ----
 async function startDownload() {
-  const url = document.getElementById("url").value.trim();
+  const url = $("url").value.trim();
   if (!url) { showLog("Pegá una URL"); return; }
-  const fmt = document.getElementById("format").value;
+  const fmt = $("format").value;
   if (!fmt) { showLog("Seleccioná un formato"); return; }
+  const outputDir = $("outputDir").value.trim();
+  if (!outputDir) { showLog("Elegí una carpeta de descarga"); return; }
+  const abr = $("abr").value;
+  const embed = $("embedThumb").checked;
 
-  let outputDir = document.getElementById("outputDir").value.trim();
-  if (!outputDir) outputDir = "C:\\Users\\klein\\Downloads";
-  const abr = document.getElementById("abr").value;
-  const embed = document.getElementById("embedTh").checked;
-
-  document.getElementById("dlBtn").disabled = true;
-  document.getElementById("progressArea").style.display = "block";
-  document.getElementById("cancelBtn").style.display = "inline-block";
+  $("dlBtn").disabled = true;
+  $("progressArea").style.display = "block";
+  $("cancelBtn").style.display = "inline-block";
 
   const body = new URLSearchParams({ url, formatId: fmt, outputDir, embedThumbnail: embed ? "1" : "" });
-  if (document.getElementById("type").value === "audio" && abr !== "0") body.set("audioBitrate", abr);
+  if ($("type").value === "audio" && abr !== "0") body.set("audioBitrate", abr);
 
   showLog("Descargando...");
   try {
-    const r = await fetch("/apps/yt-downloader/api/start-download", {
-      method: "POST",
-      body,
-    });
+    const r = await fetch("/apps/yt-downloader/api/start-download", { method: "POST", body });
     const d = await r.json();
     if (d.ok) {
       downloadId = d.id;
-      // Poll progress
       progressInterval = setInterval(() => pollProgress(d.id), 300);
     } else {
       showLog("Error: " + (d.error || "desconocido"));
@@ -203,12 +287,8 @@ async function pollProgress(id) {
     if (d.done) {
       clearInterval(progressInterval);
       progressInterval = null;
-      if (d.error) {
-        showLog("Error: " + d.error);
-      } else {
-        setProgress(100);
-        showLog("Descarga completada.");
-      }
+      if (d.error) showLog("Error: " + d.error);
+      else { setProgress(100); showLog("Descarga completada."); }
       resetUI();
     } else {
       setProgress(d.pct || 0);
@@ -231,25 +311,22 @@ async function cancelDownload() {
 }
 
 function setProgress(pct) {
-  document.getElementById("progressFill").style.width = pct + "%";
-  document.getElementById("progressText").textContent = pct.toFixed(1) + "%";
+  $("progressFill").style.width = pct + "%";
+  $("progressText").textContent = pct.toFixed(1) + "%";
 }
 
 function resetUI() {
-  document.getElementById("dlBtn").disabled = false;
-  document.getElementById("cancelBtn").style.display = "none";
+  $("dlBtn").disabled = false;
+  $("cancelBtn").style.display = "none";
   downloadId = null;
 }
 
 function showLog(msg) {
-  const el = document.getElementById("log");
+  const el = $("log");
   el.style.display = "block";
   el.textContent += msg + "\n";
   el.scrollTop = el.scrollHeight;
 }
-
-// Set default download path
-document.getElementById("outputDir").value = "C:\\Users\\klein\\Downloads";
 </script>
 </body>
 </html>

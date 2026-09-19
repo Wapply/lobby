@@ -14,12 +14,12 @@ export const APPS: AppDefinition[] = [
   {
     id: "upscale",
     name: "Upscale",
-    description: "Escalado de imágenes con Real-ESRGAN.",
+    description: "Escalado de imágenes con IA (Real-ESRGAN).",
     icon: "zoom",
-    port: 3012,
-    command: ["bun", "run", "index.ts"],
+    port: 0,
+    command: [],
     ui: "apps/upscale/ui.html",
-    favorite: false,
+    favorite: true,
   },
 ];
 
