@@ -1,4 +1,4 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![cfg_attr(windows, windows_subsystem = "windows")]
 
 use std::process::Command;
 use std::sync::Mutex;
@@ -13,12 +13,17 @@ struct LobbyProcess(Mutex<Option<u32>>);
 fn spawn_bun(root: &std::path::Path) -> Result<u32, String> {
     let mut cmd = Command::new("bun");
     cmd.args(["run", "index.ts"]).current_dir(root);
+    // Suppress child process console on Windows
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
+    // Always redirect stdio to avoid dangling console handles
+    cmd.stdout(std::process::Stdio::null());
+    cmd.stderr(std::process::Stdio::null());
+    cmd.stdin(std::process::Stdio::null());
     let child = cmd.spawn().map_err(|e| format!("could not spawn bun: {e}"))?;
     Ok(child.id())
 }
