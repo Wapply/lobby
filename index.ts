@@ -43,6 +43,10 @@ app.all("/apps/:id/api/*", async (c) => {
   if (id === "yt-downloader") {
     const rest = c.req.path.slice(`/apps/${id}/api/`.length);
 
+    if (pm.status(id) !== "running") {
+      return c.json({ error: "app not running" }, 409);
+    }
+
     if (c.req.method === "POST" && rest === "list-formats") {
       const body = await c.req.parseBody();
       return c.json(await listFormats(String(body.url || "")));
@@ -115,7 +119,7 @@ app.get("/api/apps", (c) => {
   return c.json(
     APPS.map((a) => ({
       ...a,
-      status: a.id === "yt-downloader" ? "running" : (map[a.id]?.status ?? "off"),
+      status: map[a.id]?.status ?? "off",
       lastError: map[a.id]?.lastError,
     }))
   );
@@ -124,7 +128,6 @@ app.get("/api/apps", (c) => {
 app.post("/api/apps/:id/start", async (c) => {
   const def = getApp(c.req.param("id"));
   if (!def) return c.json({ error: "not found" }, 404);
-  if (def.id === "yt-downloader") return c.json({ id: def.id, status: "running" });
   await pm.start(def);
   await pm.savePersisted();
   return c.json({ id: def.id, status: pm.status(def.id) });
@@ -133,7 +136,6 @@ app.post("/api/apps/:id/start", async (c) => {
 app.post("/api/apps/:id/stop", async (c) => {
   const def = getApp(c.req.param("id"));
   if (!def) return c.json({ error: "not found" }, 404);
-  if (def.id === "yt-downloader") return c.json({ id: def.id, status: "running" });
   pm.stop(def.id);
   await pm.savePersisted();
   return c.json({ id: def.id, status: pm.status(def.id) });
@@ -142,8 +144,8 @@ app.post("/api/apps/:id/stop", async (c) => {
 app.post("/api/apps/:id/restart", async (c) => {
   const def = getApp(c.req.param("id"));
   if (!def) return c.json({ error: "not found" }, 404);
-  if (def.id === "yt-downloader") return c.json({ id: def.id, status: "running" });
   await pm.restart(def.id);
+  await pm.savePersisted();
   return c.json({ id: def.id, status: pm.status(def.id) });
 });
 
