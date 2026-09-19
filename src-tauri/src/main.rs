@@ -11,12 +11,15 @@ use tauri::{
 struct LobbyProcess(Mutex<Option<u32>>);
 
 fn spawn_bun(root: &std::path::Path) -> Result<u32, String> {
-    let child = Command::new("bun")
-        .arg("run")
-        .arg("index.ts")
-        .current_dir(root)
-        .spawn()
-        .map_err(|e| format!("could not spawn bun: {e}"))?;
+    let mut cmd = Command::new("bun");
+    cmd.args(["run", "index.ts"]).current_dir(root);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    let child = cmd.spawn().map_err(|e| format!("could not spawn bun: {e}"))?;
     Ok(child.id())
 }
 
