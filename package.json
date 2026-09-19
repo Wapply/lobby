@@ -6,7 +6,10 @@
   "scripts": {
     "lobby": "bun run index.ts",
     "dev": "bun --watch index.ts",
-    "start": "bun run index.ts"
+    "start": "bun run index.ts",
+    "tray": "cargo run --manifest-path src-tauri/Cargo.toml",
+    "tray:build": "cargo build --release --manifest-path src-tauri/Cargo.toml",
+    "tray:bundle": "cargo build --release --manifest-path src-tauri/Cargo.toml && cargo bundle --manifest-path src-tauri/Cargo.toml --release 2>&1 | tail -20"
   },
   "devDependencies": {
     "@types/bun": "^1.4.2"

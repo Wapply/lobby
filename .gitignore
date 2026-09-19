@@ -35,3 +35,9 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # runtime state
 data
+
+# Tauri / Rust
+src-tauri/target
+src-tauri/Cargo.lock
+src-tauri/gen/
+!src-tauri/dist/
