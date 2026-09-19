@@ -20,30 +20,39 @@ fn spawn_bun(root: &std::path::Path) -> Result<u32, String> {
     Ok(child.id())
 }
 
+fn find_project_root() -> Result<std::path::PathBuf, String> {
+    let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+    if let Ok(cwd) = std::env::current_dir() {
+        candidates.push(cwd);
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(p) = exe.parent() {
+            candidates.push(p.to_path_buf());
+        }
+    }
+    for base in candidates {
+        let mut cur = base.clone();
+        for _ in 0..6 {
+            if cur.join("index.ts").exists() {
+                return Ok(cur);
+            }
+            if let Some(parent) = cur.parent() {
+                cur = parent.to_path_buf();
+            } else {
+                break;
+            }
+        }
+    }
+    Err("index.ts not found (search from cwd and exe)".into())
+}
+
 #[tauri::command]
 fn start_lobby(state: tauri::State<LobbyProcess>) -> Result<u32, String> {
     let mut guard = state.0.lock().unwrap();
     if let Some(pid) = *guard {
         return Ok(pid);
     }
-    let root = std::env::current_dir().map_err(|e| e.to_string())?;
-    // When running as bundled app, current_dir is different; try executable parent
-    let root = if root.join("index.ts").exists() {
-        root
-    } else if let Ok(exe) = std::env::current_exe() {
-        exe.parent()
-            .and_then(|p| p.parent())
-            .map(|p| p.to_path_buf())
-            .unwrap_or(root)
-    } else {
-        root
-    };
-    // For dev, root is src-tauri or project root; normalize to project root
-    let project_root = if root.ends_with("src-tauri") {
-        root.join("..")
-    } else {
-        root
-    };
+    let project_root = find_project_root()?;
     let pid = spawn_bun(&project_root)?;
     *guard = Some(pid);
     Ok(pid)
