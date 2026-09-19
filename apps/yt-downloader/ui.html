@@ -6,28 +6,38 @@
 <title>YT Downloader</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, sans-serif; }
-  body { background: #111; color: #fff; padding: 40px; min-height: 100vh; }
+  body { background: #111; color: #fff; padding: 32px 40px; min-height: 100vh; }
   h1 { font-size: 20px; margin-bottom: 4px; }
   p { color: #8a8a8a; margin-bottom: 24px; }
+  label { display: block; font-size: 12px; color: #8a8a8a; margin-bottom: 6px; }
   .row { display: flex; gap: 8px; max-width: 540px; }
-  input { flex: 1; background: #0a0a0a; border: 1px solid #222; color: #fff; padding: 10px 12px; border-radius: 6px; outline: none; }
-  .row button { background: #fff; color: #000; border: none; padding: 10px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; }
-  .row button:hover { opacity: 0.85; }
-  .options { display: flex; gap: 8px; margin-top: 10px; }
-  .options button { background: #222; color: #fff; border: 1px solid #333; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; }
-  .options button:hover { background: #333; }
-  #status { margin-top: 16px; color: #8a8a8a; font-size: 13px; }
+  input, select { background: #0a0a0a; border: 1px solid #222; color: #fff; padding: 10px 12px; border-radius: 6px; outline: none; }
+  input { flex: 1; }
+  select { min-width: 110px; cursor: pointer; }
+  .actions { display: flex; gap: 8px; margin-top: 10px; }
+  .actions button { background: #fff; color: #000; border: none; padding: 10px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; }
+  .actions button:hover { opacity: 0.85; }
+  .actions button.sec { background: #222; color: #fff; border: 1px solid #333; }
+  .actions button.sec:hover { background: #333; }
+  #status { margin-top: 16px; color: #8a8a8a; font-size: 13px; white-space: pre-wrap; }
 </style>
 </head>
 <body>
 <h1>YT Downloader</h1>
-<p>Descargá con yt-dlp.</p>
+<p>Descargá videos/audio con yt-dlp.</p>
 <div class="row">
   <input id="url" placeholder="https://youtube.com/watch?v=..." />
-  <button onclick="download('audio')">Descargar</button>
+  <select id="quality">
+    <option value="best">Mejor calidad</option>
+    <option value="4k">4K</option>
+    <option value="1080p">1080p</option>
+    <option value="720p">720p</option>
+    <option value="480p">480p</option>
+  </select>
 </div>
-<div class="options">
-  <button onclick="download('video')">Video (mp4)</button>
+<div class="actions">
+  <button onclick="download('audio')">Solo Audio (mp3)</button>
+  <button class="sec" onclick="download('video')">Video</button>
 </div>
 <div id="status"></div>
 <script>
@@ -36,10 +46,11 @@ async function download(type) {
   const url = document.getElementById("url").value;
   if (!url) { s.textContent = "Pegá una URL."; return; }
   s.textContent = "Descargando...";
+  const quality = document.getElementById("quality").value;
   const endpoint = type === "video" ? "download-video" : "download";
   const r = await fetch("/apps/yt-downloader/api/" + endpoint, {
     method: "POST",
-    body: new URLSearchParams({ url }),
+    body: new URLSearchParams({ url, quality }),
   });
   const d = await r.json();
   s.textContent = d.ok ? "Listo." : "Error: " + (d.error || "desconocido");

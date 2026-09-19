@@ -1,19 +1,13 @@
 import type { AppDefinition } from "./types";
 
-/**
- * Declarative registry of apps. Drop a new entry here (or add plugin support
- * later) and the lobby picks it up automatically.
- *
- * All services bind to 127.0.0.1 for local-only access.
- */
 export const APPS: AppDefinition[] = [
   {
     id: "yt-downloader",
     name: "YT Downloader",
     description: "Descarga audio/video con yt-dlp.",
     icon: "download",
-    port: 3011,
-    command: ["bun", "run", "index.ts"],
+    port: 0,
+    command: [],
     ui: "apps/yt-downloader/ui.html",
     favorite: true,
   },
@@ -21,7 +15,7 @@ export const APPS: AppDefinition[] = [
     id: "upscale",
     name: "Upscale",
     description: "Escalado de imágenes con Real-ESRGAN.",
-    icon: "zoom-in",
+    icon: "zoom",
     port: 3012,
     command: ["bun", "run", "index.ts"],
     ui: "apps/upscale/ui.html",
