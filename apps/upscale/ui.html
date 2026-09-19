@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Upscale</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, sans-serif; }
+  body { background: #111; color: #fff; padding: 40px; min-height: 100vh; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  p { color: #8a8a8a; margin-bottom: 24px; }
+  input[type=file] { color: #8a8a8a; margin-bottom: 16px; }
+  button { background: #fff; color: #000; border: none; padding: 10px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; }
+  button:hover { opacity: 0.85; }
+  #status { margin-top: 16px; color: #8a8a8a; font-size: 13px; }
+</style>
+</head>
+<body>
+<h1>Upscale</h1>
+<p>Escalado de imágenes. Módulo de ejemplo — el handler aún no está implementado.</p>
+<label>Siguiente: procesar con Real-ESRGAN.</label>
+<div style="margin-top:24px"><button onclick="probe()">Probar servicio</button></div>
+<div id="status"></div>
+<script>
+async function probe() {
+  const s = document.getElementById("status");
+  const r = await fetch("/apps/upscale/api/status");
+  const d = await r.json();
+  s.textContent = "Servicio: " + JSON.stringify(d);
+}
+</script>
+</body>
+</html>

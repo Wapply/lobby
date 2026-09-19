@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lobby</title>
+<link rel="preconnect" href="https://rsms.me/" />
+<link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --panel: #111111;
+    --line: #222222;
+    --fg: #ffffff;
+    --muted: #8a8a8a;
+    --on: #2ecc71;
+    --off: #555555;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: "Inter", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    display: flex;
+    font-size: 14px;
+  }
+  aside {
+    width: 280px; min-width: 280px;
+    background: #000;
+    border-right: 1px solid var(--line);
+    display: flex; flex-direction: column;
+    height: 100vh;
+  }
+  .brand { padding: 20px; font-weight: 700; font-size: 18px; letter-spacing: -0.02em; border-bottom: 1px solid var(--line); }
+  .brand span { color: var(--muted); }
+  .search { margin: 12px; padding: 10px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; color: var(--fg); outline: none; }
+  .search::placeholder { color: var(--muted); }
+  .app-list { flex: 1; overflow-y: auto; padding: 0 8px 12px; }
+  .app-item { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; transition: background 0.15s ease; }
+  .app-item:hover { background: var(--panel); }
+  .app-item.active { background: var(--panel); border-color: var(--line); }
+  .app-icon { width: 34px; height: 34px; border: 1px solid var(--line); border-radius: 6px; display: grid; place-items: center; flex: none; }
+  .app-item .name { font-weight: 600; }
+  .app-item .desc { color: var(--muted); font-size: 12px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--off); flex: none; margin-left: auto; transition: background 0.15s; }
+  .dot.on { background: var(--on); box-shadow: 0 0 8px var(--on); }
+  .dot.error { background: #e74c3c; }
+  footer { padding: 14px 16px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--muted); }
+  footer button { background: none; border: 1px solid var(--line); color: var(--fg); padding: 6px 10px; border-radius: 6px; cursor: pointer; }
+  footer button:hover { background: var(--panel); }
+  main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .app-frame { flex: 1; border: none; background: var(--panel); opacity: 0; animation: fade 0.2s ease forwards; }
+  @keyframes fade { from { opacity: 0; transform: scale(0.99); } to { opacity: 1; transform: scale(1); } }
+  .empty { flex: 1; display: grid; place-items: center; color: var(--muted); }
+  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #fff; color: #000; padding: 10px 16px; border-radius: 6px; font-weight: 500; opacity: 0; transition: opacity 0.2s; z-index: 50; }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<aside>
+  <div class="brand">Lobby<span> / local</span></div>
+  <input class="search" placeholder="Buscar apps..." oninput="renderList(this.value)" />
+  <div class="app-list" id="list"></div>
+  <footer>
+    <span id="running-count">0 corriendo</span>
+    <button onclick="stopAll()">Stop All</button>
+  </footer>
+</aside>
+<main>
+  <div class="empty" id="empty">Seleccioná una app</div>
+  <iframe class="app-frame" id="frame" style="display:none"></iframe>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+let APPS = [];
+let current = null;
+const $ = (id) => document.getElementById(id);
+
+const ICONS = {
+  download: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
+  zoom: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
+};
+const fallbackIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>';
+
+function dotClass(s) {
+  if (s === "running") return "dot on";
+  if (s === "error") return "dot error";
+  return "dot";
+}
+
+function renderList(filter = "") {
+  const list = $("list");
+  list.innerHTML = "";
+  const f = filter.toLowerCase();
+  for (const a of APPS) {
+    if (f && !(a.name + a.description).toLowerCase().includes(f)) continue;
+    const item = document.createElement("div");
+    item.className = "app-item" + (current === a.id ? " active" : "");
+    item.innerHTML =
+      '<div class="app-icon">' + (ICONS[a.icon] || fallbackIcon) + "</div>" +
+      '<div><div class="name">' + a.name + "</div><div class=\"desc\">" + a.description + "</div></div>" +
+      '<div class="' + dotClass(a.status) + '"></div>';
+    item.onclick = () => openApp(a);
+    list.appendChild(item);
+  }
+}
+
+function openApp(a) {
+  current = a.id;
+  renderList();
+  const frame = $("frame");
+  frame.style.display = "block";
+  frame.src = "/apps/" + a.id + "/ui";
+  $("empty").style.display = "none";
+}
+
+function updateCount() {
+  const n = APPS.filter((a) => a.status === "running").length;
+  $("running-count").textContent = n + " corriendo";
+}
+
+async function load() {
+  const res = await fetch("/api/apps");
+  APPS = await res.json();
+  renderList();
+  updateCount();
+}
+
+async function toggle(id) {
+  const a = APPS.find((x) => x.id === id);
+  const on = a.status === "running";
+  const res = await fetch("/api/apps/" + id + "/" + (on ? "stop" : "start"), { method: "POST" });
+  const data = await res.json();
+  toast(on ? "App detenida" : "App iniciada");
+  await load();
+  if (data.status === "error") toast("Error al iniciar " + data.id);
+}
+
+async function stopAll() {
+  await fetch("/api/stop-all", { method: "POST" });
+  toast("Todas las apps detenidas");
+  await load();
+}
+
+let toastTimer;
+function toast(msg) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 2200);
+}
+
+load();
+setInterval(load, 3000);
+</script>
+</body>
+</html>

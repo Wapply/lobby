@@ -1,0 +1,20 @@
+{
+  "name": "lobby",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "lobby": "bun run index.ts",
+    "dev": "bun --watch index.ts",
+    "start": "bun run index.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "hono": "^4.13.8"
+  }
+}

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>YT Downloader</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, sans-serif; }
+  body { background: #111; color: #fff; padding: 40px; min-height: 100vh; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  p { color: #8a8a8a; margin-bottom: 24px; }
+  .row { display: flex; gap: 8px; max-width: 520px; }
+  input { flex: 1; background: #0a0a0a; border: 1px solid #222; color: #fff; padding: 10px 12px; border-radius: 6px; outline: none; }
+  button { background: #fff; color: #000; border: none; padding: 10px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; }
+  button:hover { opacity: 0.85; }
+  #status { margin-top: 16px; color: #8a8a8a; font-size: 13px; }
+</style>
+</head>
+<body>
+<h1>YT Downloader</h1>
+<p>Pegá una URL y descargá el audio con yt-dlp.</p>
+<div class="row">
+  <input id="url" placeholder="https://youtube.com/watch?v=..." />
+  <button onclick="go()">Descargar</button>
+</div>
+<div id="status"></div>
+<script>
+async function go() {
+  const s = document.getElementById("status");
+  const url = document.getElementById("url").value;
+  s.textContent = "Descargando...";
+  const r = await fetch("/apps/yt-downloader/api/download", {
+    method: "POST",
+    body: new URLSearchParams({ url }),
+  });
+  const d = await r.json();
+  s.textContent = d.ok ? "Listo." : "Error: " + (d.error || "desconocido");
+}
+</script>
+</body>
+</html>
